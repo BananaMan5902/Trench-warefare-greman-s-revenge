@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Banana Trench RTS</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="ui">
+    <div>Kills: <span id="kills">0</span></div>
+    <button onclick="buyUnit('assault')">Assault (2)</button>
+    <button onclick="buyUnit('flame')">Flamethrower (5)</button>
+    <button onclick="buyUnit('mg')">Machine Gun (10)</button>
+    <button onclick="buyUnit('tank')">Tank (60)</button>
+    <button onclick="buyUnit('commander')">Commander</button>
+    <button onclick="buyUnit('artillery')">Artillery</button>
+</div>
+
+<canvas id="gameCanvas" width="1200" height="600"></canvas>
+<script src="game.js"></script>
+</body>
+</html>
