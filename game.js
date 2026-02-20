@@ -1,37 +1,62 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
+canvas.height = 900; // expanded vertically
+
 let kills = 0;
 let units = [];
 let enemyUnits = [];
+let bullets = [];
 let selected = [];
-let lastFreeSpawn = 0;
+
+const noMansLandStart = 450;
+const noMansLandEnd = 750;
 
 const trenches = [
-    {x:200,width:60},
-    {x:400,width:60},
-    {x:700,width:60},
-    {x:950,width:60}
+    {x:150,width:80,side:"player"},
+    {x:350,width:80,side:"player"},
+    {x:850,width:80,side:"enemy"},
+    {x:1050,width:80,side:"enemy"}
 ];
 
 function drawTrenches(){
     trenches.forEach(t=>{
-        ctx.fillStyle="#3b2f2f";
+        ctx.fillStyle = t.side==="player" ? "#3b2f2f" : "#2f3b3b";
         ctx.fillRect(t.x,0,t.width,canvas.height);
     });
+
+    // No Man's Land gap
+    ctx.fillStyle = "#6b8e23";
+    ctx.fillRect(noMansLandStart,0,noMansLandEnd-noMansLandStart,canvas.height);
 }
 
 class Unit{
-    constructor(type,x,y){
+    constructor(type,x,y,side="player"){
         this.type = type;
         this.x = x;
         this.y = y;
+        this.side = side;
+        this.hp = 100;
         this.targetX = x;
         this.targetY = y;
         this.reload = 0;
-        this.hp = 100;
-        this.radius = 8;
-        this.buff = 1;
+        this.radius = type==="tank"?16:8;
+        this.range = this.getRange();
+        this.damage = this.getDamage();
+    }
+
+    getRange(){
+        if(this.type==="mg") return 220;
+        if(this.type==="flame") return 100;
+        if(this.type==="tank") return 180;
+        return 150;
+    }
+
+    getDamage(){
+        if(this.type==="mg") return 8;
+        if(this.type==="flame") return 20;
+        if(this.type==="tank") return 25;
+        return 12;
     }
 
     update(){
@@ -46,97 +71,56 @@ class Unit{
 
         if(this.reload>0) this.reload--;
 
-        // Commander buff
-        if(this.type==="commander"){
-            units.forEach(u=>{
-                let d = Math.hypot(u.x-this.x,u.y-this.y);
-                if(d<80) u.buff = 1.1;
-            });
-        }
-
-        // Tank logic
+        // Tank logic: only attack trenches
         if(this.type==="tank"){
-            let trench = trenches.find(t=>Math.abs(this.x - t.x)<20);
-            if(trench){
-                trench.x += 0.05; // slowly destroys trench
+            let targetTrench = trenches.find(t=>t.side!==this.side && Math.abs(this.x - t.x)<20);
+            if(targetTrench){
+                targetTrench.x += this.side==="player"?0.05:-0.05;
             }
         }
+
+        // Find enemies in range
+        let targets = this.side==="player" ? enemyUnits : units;
+        targets.forEach(t=>{
+            let d = Math.hypot(this.x-t.x,this.y-t.y);
+            if(d<this.range && this.reload===0){
+                shoot(this,t);
+                this.reload = 60;
+            }
+        });
     }
 
     draw(){
         ctx.beginPath();
         ctx.arc(this.x,this.y,this.radius,0,Math.PI*2);
-        ctx.fillStyle = this.type==="tank"?"gray":"yellow";
+        ctx.fillStyle = this.side==="player"?"yellow":"brown";
         ctx.fill();
+
+        // Draw gun direction
+        ctx.beginPath();
+        ctx.moveTo(this.x,this.y);
+        ctx.lineTo(this.x+10,this.y);
+        ctx.strokeStyle="black";
+        ctx.stroke();
     }
+}
+
+function shoot(shooter,target){
+    bullets.push({
+        x:shooter.x,
+        y:shooter.y,
+        target:target,
+        damage:shooter.damage,
+        side:shooter.side
+    });
 }
 
 function spawnEnemy(){
-    enemyUnits.push({
-        x:1100,
-        y:Math.random()*500+50,
-        hp:50
-    });
+    let trench = trenches.find(t=>t.side==="enemy");
+    enemyUnits.push(new Unit("rifle",trench.x+40,Math.random()*canvas.height,"enemy"));
 }
 
-function update(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    drawTrenches();
-
-    units.forEach(u=>{
-        u.update();
-        u.draw();
-    });
-
-    enemyUnits.forEach((e,i)=>{
-        ctx.fillStyle="brown";
-        ctx.fillRect(e.x,e.y,10,10);
-
-        units.forEach(u=>{
-            let d = Math.hypot(u.x-e.x,u.y-e.y);
-            if(d<60 && u.reload===0){
-                let damage = 10 * u.buff;
-
-                // trench cover
-                let inTrench = trenches.some(t=>u.x>t.x && u.x<t.x+t.width);
-                if(inTrench) damage *= 0.5;
-
-                e.hp -= damage;
-                u.reload = 60;
-            }
-        });
-
-        if(e.hp<=0){
-            enemyUnits.splice(i,1);
-            kills++;
-            document.getElementById("kills").innerText = kills;
-        }
-
-        e.x -= 0.3;
-    });
-
-    // Free rifle soldiers every 30 sec
-    if(Date.now()-lastFreeSpawn>30000){
-        for(let i=0;i<10;i++){
-            units.push(new Unit("rifle",100,100+i*10));
-        }
-        lastFreeSpawn = Date.now();
-    }
-
-    requestAnimationFrame(update);
-}
-
-canvas.addEventListener("click",e=>{
-    let rect = canvas.getBoundingClientRect();
-    let x = e.clientX-rect.left;
-    let y = e.clientY-rect.top;
-
-    selected.forEach(u=>{
-        u.targetX = x;
-        u.targetY = y;
-    });
-});
+setInterval(spawnEnemy,4000);
 
 canvas.addEventListener("mousedown",e=>{
     selected=[];
@@ -151,33 +135,60 @@ canvas.addEventListener("mousedown",e=>{
     });
 });
 
-function buyUnit(type){
-    const costs = {
-        assault:2,
-        flame:5,
-        mg:10,
-        tank:60
-    };
+canvas.addEventListener("click",e=>{
+    let rect = canvas.getBoundingClientRect();
+    let x = e.clientX-rect.left;
+    let y = e.clientY-rect.top;
 
-    const caps = {
-        assault:20,
-        flame:5,
-        mg:5,
-        tank:3,
-        commander:4,
-        artillery:2
-    };
+    selected.forEach(u=>{
+        u.targetX = x;
+        u.targetY = y;
+    });
+});
 
-    if(kills < (costs[type]||0)) return;
+function update(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    if(units.filter(u=>u.type===type).length >= caps[type]) return;
+    drawTrenches();
 
-    kills -= (costs[type]||0);
-    document.getElementById("kills").innerText = kills;
+    units.forEach((u,i)=>{
+        u.update();
+        u.draw();
+        if(u.hp<=0) units.splice(i,1);
+    });
 
-    units.push(new Unit(type,100,300));
+    enemyUnits.forEach((u,i)=>{
+        u.update();
+        u.draw();
+        if(u.hp<=0){
+            enemyUnits.splice(i,1);
+            kills++;
+        }
+    });
+
+    bullets.forEach((b,i)=>{
+        let dx = b.target.x - b.x;
+        let dy = b.target.y - b.y;
+        let dist = Math.hypot(dx,dy);
+
+        if(dist<5){
+            let inTrench = trenches.some(t=>b.target.x>t.x && b.target.x<t.x+t.width);
+            let damage = inTrench ? b.damage*0.5 : b.damage;
+            b.target.hp -= damage;
+            bullets.splice(i,1);
+        }else{
+            b.x += dx/dist*5;
+            b.y += dy/dist*5;
+            ctx.fillStyle="black";
+            ctx.fillRect(b.x,b.y,3,3);
+        }
+    });
+
+    requestAnimationFrame(update);
 }
 
-setInterval(spawnEnemy,3000);
+function buyUnit(type){
+    units.push(new Unit(type,200,canvas.height/2,"player"));
+}
 
 update();
